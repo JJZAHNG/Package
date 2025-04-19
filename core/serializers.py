@@ -3,6 +3,9 @@
 from rest_framework import serializers
 from .models import User, DeliveryOrder, Robot
 from django.contrib.auth import get_user_model
+from datetime import date, datetime
+from django.utils import timezone
+
 
 User = get_user_model()
 
@@ -23,8 +26,37 @@ class DeliveryOrderSerializer(serializers.ModelSerializer):
         fields = '__all__'
         read_only_fields = ['student', 'teacher', 'status', 'created_at']
 
+    def validate(self, data):
+        """
+        校验预约时间不能是过去
+        """
+        scheduled_date = data.get('scheduled_date')
+        scheduled_time = data.get('scheduled_time')
+
+        if scheduled_date:
+            today = date.today()
+            if scheduled_date < today:
+                raise serializers.ValidationError("预约日期不能早于今天")
+
+            if scheduled_date == today and scheduled_time:
+                now_time = timezone.localtime().time()
+                if scheduled_time < now_time:
+                    raise serializers.ValidationError("预约时间不能早于当前时间")
+
+        return data
+
+    def to_representation(self, instance):
+        """
+        自定义输出格式：fragile 显示为 是/否
+        """
+        rep = super().to_representation(instance)
+        rep['fragile'] = "是" if instance.fragile else "否"
+        return rep
+
 
 class RobotSerializer(serializers.ModelSerializer):
     class Meta:
         model = Robot
         fields = '__all__'
+
+
