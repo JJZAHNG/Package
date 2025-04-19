@@ -9,6 +9,8 @@ from .serializers import DeliveryOrderSerializer, RobotSerializer, UserSerialize
 from rest_framework.response import Response
 from rest_framework.decorators import action
 from django.contrib.auth import get_user_model
+from .utils import generate_signed_payload, generate_qr_code
+
 
 User = get_user_model()
 
@@ -36,7 +38,19 @@ class DeliveryOrderViewSet(viewsets.ModelViewSet):
         return DeliveryOrder.objects.filter(student=user)
 
     def perform_create(self, serializer):
-        serializer.save(student=self.request.user)
+        # 保存订单（此时还没有 ID，需保存后获取）
+        order = serializer.save(student=self.request.user)
+
+        # 生成签名数据和二维码图像
+        signed_data = generate_signed_payload(order.id, order.student.id)
+        qr_base64 = generate_qr_code(signed_data)
+
+        # print("🔥 二维码链接长度：", len(order.qr_code_url))
+        # print("🔗 链接内容：", order.qr_code_url)
+
+        # 更新订单对象，写入二维码字段
+        order.qr_code_url = qr_base64
+        order.save()
 
     def update(self, request, *args, **kwargs):
         instance = self.get_object()
@@ -65,7 +79,6 @@ class DeliveryOrderViewSet(viewsets.ModelViewSet):
 
         serializer = self.get_serializer(instance)
         return Response(serializer.data)
-
 
 # class RobotViewSet(viewsets.ReadOnlyModelViewSet):
 #     queryset = Robot.objects.all()

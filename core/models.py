@@ -43,6 +43,8 @@ class DeliveryOrder(models.Model):
     # 📌 状态
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
 
+    qr_code_url = models.TextField(blank=True, null=True)
+
     def __str__(self):
         return f"Order #{self.id} - {self.status}"
 
