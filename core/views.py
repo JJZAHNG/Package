@@ -26,6 +26,11 @@ class UserViewSet(viewsets.ModelViewSet):
     serializer_class = UserSerializer
     permission_classes = [permissions.AllowAny]
 
+    @action(detail=False, methods=['get'], url_path='me')
+    def get_current_user(self, request):
+        serializer = self.get_serializer(request.user)
+        return Response(serializer.data)
+
 
 class DeliveryOrderViewSet(viewsets.ModelViewSet):
     serializer_class = DeliveryOrderSerializer
