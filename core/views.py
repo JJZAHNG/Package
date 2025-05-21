@@ -1,26 +1,32 @@
 from django.shortcuts import render
 
 # Create your views here.
-# core/views.py
-
-from rest_framework import viewsets, permissions
+from rest_framework import viewsets, permissions, status
 from .models import DeliveryOrder, Robot
 from .serializers import DeliveryOrderSerializer, RobotSerializer, UserSerializer
 from rest_framework.response import Response
 from rest_framework.decorators import action
 from django.contrib.auth import get_user_model
 from .utils import generate_signed_payload, generate_qr_code
+from rest_framework.permissions import IsAdminUser
 
 
 User = get_user_model()
 
+
+# ✅ 管理员权限控制类
 class IsAdminUserOnly(permissions.BasePermission):
-    """
-    仅允许管理员用户（is_staff=True）增删改机器人
-    """
     def has_permission(self, request, view):
         return request.user and request.user.is_authenticated and request.user.is_staff
 
+
+# ✅ 新增：分发人员权限控制类
+class IsDispatcher(permissions.BasePermission):
+    def has_permission(self, request, view):
+        return request.user and request.user.is_authenticated and request.user.is_dispatcher
+
+
+# ✅ 用户视图（含 /me）
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
     serializer_class = UserSerializer
@@ -31,7 +37,27 @@ class UserViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(request.user)
         return Response(serializer.data)
 
+    @action(detail=True, methods=['post'], permission_classes=[IsAdminUser])
+    def set_dispatcher(self, request, pk=None):
+        """
+        设置/取消配送员身份（超级管理员专用）
+        POST /api/users/<id>/set_dispatcher/
+        {
+          "is_dispatcher": true
+        }
+        """
+        user = self.get_object()
+        is_dispatcher = request.data.get("is_dispatcher")
 
+        if not isinstance(is_dispatcher, bool):
+            return Response({"detail": "请提供 is_dispatcher: true/false"}, status=400)
+
+        user.is_dispatcher = is_dispatcher
+        user.save()
+        return Response({"id": user.id, "username": user.username, "is_dispatcher": user.is_dispatcher})
+
+
+# ✅ 学生 / 老师订单接口
 class DeliveryOrderViewSet(viewsets.ModelViewSet):
     serializer_class = DeliveryOrderSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -43,37 +69,25 @@ class DeliveryOrderViewSet(viewsets.ModelViewSet):
         return DeliveryOrder.objects.filter(student=user)
 
     def perform_create(self, serializer):
-        # 保存订单（此时还没有 ID，需保存后获取）
         order = serializer.save(student=self.request.user)
-
-        # 生成签名数据和二维码图像
         signed_data = generate_signed_payload(order.id, order.student.id)
         qr_base64 = generate_qr_code(signed_data)
-
-        # print("🔥 二维码链接长度：", len(order.qr_code_url))
-        # print("🔗 链接内容：", order.qr_code_url)
-
-        # 更新订单对象，写入二维码字段
         order.qr_code_url = qr_base64
         order.save()
 
     def update(self, request, *args, **kwargs):
         instance = self.get_object()
 
-        # 🔒 仅允许老师更新订单（学生不能执行分配）
         if not request.user.is_teacher:
             return Response({'detail': '只有教师可以分配机器人'}, status=status.HTTP_403_FORBIDDEN)
 
-        # ⚠️ 状态必须是待分配才能分配机器人
         if instance.status != "PENDING":
             return Response({'detail': '订单已分配或正在配送中'}, status=status.HTTP_400_BAD_REQUEST)
 
-        # 🚚 找一个空闲机器人
         robot = Robot.objects.filter(is_available=True).first()
         if not robot:
             return Response({'detail': '当前无可用机器人'}, status=status.HTTP_400_BAD_REQUEST)
 
-        # ✅ 更新订单状态 & 教师 & 绑定机器人
         instance.status = "ASSIGNED"
         instance.teacher = request.user
         instance.save()
@@ -85,11 +99,31 @@ class DeliveryOrderViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(instance)
         return Response(serializer.data)
 
-# class RobotViewSet(viewsets.ReadOnlyModelViewSet):
-#     queryset = Robot.objects.all()
-#     serializer_class = RobotSerializer
-#     permission_classes = [permissions.IsAuthenticated]
 
+# ✅ 配送人员专属订单操作接口
+class DispatchOrderViewSet(viewsets.ModelViewSet):
+    serializer_class = DeliveryOrderSerializer
+    permission_classes = [IsDispatcher]
+
+    def get_queryset(self):
+        status_filter = self.request.query_params.get("status")
+        if status_filter:
+            return DeliveryOrder.objects.filter(status=status_filter)
+        return DeliveryOrder.objects.all()
+
+    def partial_update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        new_status = request.data.get('status')
+
+        if new_status not in ['ASSIGNED', 'DELIVERING', 'DELIVERED']:
+            return Response({"detail": "不允许设置该状态"}, status=status.HTTP_400_BAD_REQUEST)
+
+        instance.status = new_status
+        instance.save()
+        return Response(self.get_serializer(instance).data)
+
+
+# ✅ 机器人接口
 class RobotViewSet(viewsets.ModelViewSet):
     queryset = Robot.objects.all()
     serializer_class = RobotSerializer
@@ -98,5 +132,3 @@ class RobotViewSet(viewsets.ModelViewSet):
         if self.action in ['create', 'update', 'partial_update', 'destroy']:
             return [IsAdminUserOnly()]
         return [permissions.IsAuthenticated()]
-
-
