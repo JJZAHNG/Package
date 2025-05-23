@@ -2,8 +2,8 @@ from django.shortcuts import render
 
 # Create your views here.
 from rest_framework import viewsets, permissions, status
-from .models import DeliveryOrder, Robot
-from .serializers import DeliveryOrderSerializer, RobotSerializer, UserSerializer
+from .models import DeliveryOrder, Robot, Message
+from .serializers import DeliveryOrderSerializer, RobotSerializer, UserSerializer, MessageSerializer
 from rest_framework.response import Response
 from rest_framework.decorators import action
 from django.contrib.auth import get_user_model
@@ -132,3 +132,13 @@ class RobotViewSet(viewsets.ModelViewSet):
         if self.action in ['create', 'update', 'partial_update', 'destroy']:
             return [IsAdminUserOnly()]
         return [permissions.IsAuthenticated()]
+
+
+class MessageViewSet(viewsets.ModelViewSet):
+    queryset = Message.objects.all().order_by('-created_at')
+    serializer_class = MessageSerializer
+
+    def get_permissions(self):
+        if self.request.method == 'GET':
+            return [permissions.IsAdminUser()]
+        return [permissions.AllowAny()]

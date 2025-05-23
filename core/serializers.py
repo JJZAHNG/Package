@@ -1,7 +1,7 @@
 # core/serializers.py
 
 from rest_framework import serializers
-from .models import User, DeliveryOrder, Robot
+from .models import User, DeliveryOrder, Robot, Message
 from django.contrib.auth import get_user_model
 from datetime import date, datetime
 from django.utils import timezone
@@ -83,5 +83,12 @@ class RobotSerializer(serializers.ModelSerializer):
     class Meta:
         model = Robot
         fields = '__all__'
+
+
+class MessageSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Message
+        fields = ['id', 'name', 'email', 'message', 'created_at']
+        read_only_fields = ['id', 'created_at']
 
 

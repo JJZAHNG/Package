@@ -2,7 +2,7 @@
 
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import DeliveryOrderViewSet, RobotViewSet, UserViewSet, DispatchOrderViewSet
+from .views import DeliveryOrderViewSet, RobotViewSet, UserViewSet, DispatchOrderViewSet, MessageViewSet
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 router = DefaultRouter()
@@ -11,6 +11,8 @@ router.register('robots', RobotViewSet, basename='robots')
 router.register('users', UserViewSet, basename='users')
 
 router.register(r'dispatch/orders', DispatchOrderViewSet, basename='dispatch-orders')
+
+router.register('messages', MessageViewSet, basename='messages')
 
 
 # www.luanqibazao.com/login
