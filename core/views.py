@@ -8,7 +8,15 @@ from rest_framework.response import Response
 from rest_framework.decorators import action
 from django.contrib.auth import get_user_model
 from .utils import generate_signed_payload, generate_qr_code
-from rest_framework.permissions import IsAdminUser
+from rest_framework.permissions import IsAdminUser, AllowAny
+from rest_framework.views import APIView
+from rest_framework.parsers import MultiPartParser
+from pyzbar.pyzbar import decode
+from PIL import Image
+import json, hashlib, base64
+from django.conf import settings
+
+
 
 
 User = get_user_model()
@@ -142,3 +150,70 @@ class MessageViewSet(viewsets.ModelViewSet):
         if self.request.method == 'GET':
             return [permissions.IsAdminUser()]
         return [permissions.AllowAny()]
+
+
+class QRCodeVerifyView(APIView):
+    permission_classes = [AllowAny]  # ✅ 不需要登录认证
+    parser_classes = [MultiPartParser]  # ✅ 支持文件上传
+
+    def post(self, request):
+        image = request.FILES.get('file')
+
+        if not image:
+            return Response({"detail": "未上传二维码图片"}, status=400)
+
+        try:
+            img = Image.open(image)
+            qr_data_list = decode(img)
+
+            if not qr_data_list:
+                return Response({"detail": "无法识别二维码"}, status=400)
+
+            # ✅ 第一个二维码内容（字符串格式）
+            data = qr_data_list[0].data.decode("utf-8")
+            qr_json = json.loads(data)
+
+            # ✅ 从二维码中获取 base64 编码的 payload 和签名
+            payload_b64 = qr_json.get("payload")
+            signature = qr_json.get("signature")
+
+            if not payload_b64 or not signature:
+                return Response({"detail": "二维码数据格式无效"}, status=400)
+
+            # ✅ 解码 payload
+            try:
+                payload_str = base64.b64decode(payload_b64).decode()
+            except Exception:
+                return Response({"detail": "无法解码 payload"}, status=400)
+
+            # ✅ 签名校验
+            expected_signature = hashlib.sha256((payload_str + settings.SECRET_KEY).encode()).hexdigest()
+            if signature != expected_signature:
+                return Response({"detail": "签名无效"}, status=403)
+
+            # ✅ 提取 payload 内容
+            payload = json.loads(payload_str)
+            order_id = payload.get("order_id")
+            student_id = payload.get("student_id")
+
+            if not order_id or not student_id:
+                return Response({"detail": "payload 数据不完整"}, status=400)
+
+            # ✅ 查找订单并确认身份
+            try:
+                order = DeliveryOrder.objects.get(id=order_id, student_id=student_id)
+            except DeliveryOrder.DoesNotExist:
+                return Response({"detail": "订单不存在或身份不符"}, status=404)
+
+            # ✅ 修改订单状态
+            order.status = "DELIVERED"
+            order.save()
+
+            return Response({
+                "detail": "✅ 验证成功，状态已更新为已送达",
+                "order_id": order.id,
+                "new_status": order.status,
+            })
+
+        except Exception as e:
+            return Response({"detail": f"处理失败: {str(e)}"}, status=500)

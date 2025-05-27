@@ -2,7 +2,7 @@
 
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import DeliveryOrderViewSet, RobotViewSet, UserViewSet, DispatchOrderViewSet, MessageViewSet
+from .views import DeliveryOrderViewSet, RobotViewSet, UserViewSet, DispatchOrderViewSet, MessageViewSet, QRCodeVerifyView
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 router = DefaultRouter()
@@ -15,9 +15,12 @@ router.register(r'dispatch/orders', DispatchOrderViewSet, basename='dispatch-ord
 router.register('messages', MessageViewSet, basename='messages')
 
 
+
 # www.luanqibazao.com/login
 urlpatterns = [
     path('api/', include(router.urls)),
     path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    path('api/verify_qr/', QRCodeVerifyView.as_view(), name='verify-qr'),
+
 ]
